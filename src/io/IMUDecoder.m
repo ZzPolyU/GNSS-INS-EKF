@@ -1,3 +1,0 @@
-classdef IMUDecoder < handle
-    
-end
