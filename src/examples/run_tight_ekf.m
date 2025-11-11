@@ -23,12 +23,13 @@ imu_batches = alignImuToGnss(imu_data.get_cell(), gnss_time);
 % 初始化
 gnss_data.spp();
 N = gnss_data.get_epoch();
-p0 = zeros(3, 1);
+% p0 = zeros(3, 1);
+p0 = [-2.419174545866470e+06;	5.385342020290633e+06;	2.405652618703981e+06];
 v0 = zeros(3, 1);
 ba0 = zeros(3, 1);
 dtr = 0; % m
 x0 = [p0; v0; ba0; dtr];
-P0 = 10 * eye(10);
+P0 = 100000 * eye(10);
 
 x_est = zeros(10, N);
 x_est(:, 1) = x0;

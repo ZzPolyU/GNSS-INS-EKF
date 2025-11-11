@@ -17,8 +17,10 @@ classdef IMUModel < TransitionModel
             a_B0 = imu_data.acc(1, :)';
             a_B0 = a_B0 - ba_prev;
             q_0 = imu_data.quat(1, :)';
-            R_GB = obj.computeRotation(p_prev(1), p_prev(2), p_prev(3), q_0(1), q_0(2), q_0(3), q_0(4));
-            a_G = R_GB * a_B0;
+            R_LB = obj.computeRLB(q_0(1), q_0(2), q_0(3), q_0(4));
+            R_GL = obj.computeRGL(p_prev(1), p_prev(2), p_prev(3));
+            temp = R_LB * a_B0 - [0; 0; 9.8];
+            a_G = R_GL * temp;
             
             % 状态预测（欧拉积分）
             p_pred = p_prev + v_prev * dt;  % 位置更新
@@ -28,13 +30,26 @@ classdef IMUModel < TransitionModel
             
             % 输出
             x_pred = [p_pred; v_pred; ba_pred; dtr_pred];
-            F = obj.computeF(x_prev, a_G, dt);
-            Q = obj.computeQ(x_prev);
+            F = obj.computeF(R_GL*R_LB, dt);
+            Q = obj.computeQ(dt);
         end
     end
 
     methods (Static)
-        function R_GB = computeRotation(x_ecef, y_ecef, z_ecef, q_x, q_y, q_z, q_w)
+        function R_LB = computeRLB(q_x, q_y, q_z, q_w)
+            % R_LB
+            q = [q_w, q_x, q_y, q_z];  % [w, x, y, z]
+            q = q / norm(q);
+            w = q(1); x = q(2); y = q(3); z = q(4);
+
+            R_LB = [
+                1-2*y^2-2*z^2,   2*x*y - 2*z*w,   2*x*z + 2*y*w;
+                2*x*y + 2*z*w,   1-2*x^2-2*z^2,   2*y*z - 2*x*w;
+                2*x*z - 2*y*w,   2*y*z + 2*x*w,   1-2*x^2-2*y^2
+            ];
+        end
+
+        function R_GL = computeRGL(x_ecef, y_ecef, z_ecef)
             % R_GB = R_GL * R_LB
             % 输入：
             %   x_ecef, y_ecef, z_ecef - ECEF坐标 (m)
@@ -68,34 +83,18 @@ classdef IMUModel < TransitionModel
                 cos_lon,  -sin_lat*sin_lon,  cos_lat*sin_lon;
                 0,        cos_lat,           sin_lat
             ];
-            
-            % R_LB
-            q = [q_w, q_x, q_y, q_z];  % [w, x, y, z]
-            q = q / norm(q);
-            w = q(1); x = q(2); y = q(3); z = q(4);
-
-            R_LB = [
-                1-2*y^2-2*z^2,   2*x*y - 2*z*w,   2*x*z + 2*y*w;
-                2*x*y + 2*z*w,   1-2*x^2-2*z^2,   2*y*z - 2*x*w;
-                2*x*z - 2*y*w,   2*y*z + 2*x*w,   1-2*x^2-2*y^2
-            ];
-            
-            % 计算R_GB
-            R_GB = R_GL * R_LB;
         end
 
-        function F = computeF(x_prev, a_ecef, dt)
-            n = length(x_prev);
-            F = eye(n);
+        function F = computeF(R_GB, dt)
+            F = eye(10);
             F(1:3, 4:6) = eye(3) * dt;
-            F(4:6, 7:9) = diag(a_ecef * dt);
+            F(4:6, 7:9) = -R_GB * dt;
         end
         
-        function Q = computeQ(x_prev)
-            n = length(x_prev);
-            noise = [0.3; 0.3; 0.3; 0.15; 0.15; 0.15; 0.01; 0.01; 0.01; 1];
+        function Q = computeQ(dt)
+            noise = [0.3; 0.3; 0.3; 0.15; 0.15; 0.15; 0.01; 0.01; 0.01; 0];
             noise = noise.^2;
-            Q = diag(noise);
+            Q = diag(noise) * dt;
         end
     end
 end
